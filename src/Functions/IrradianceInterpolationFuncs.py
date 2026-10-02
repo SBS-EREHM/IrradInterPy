@@ -145,7 +145,7 @@ def __GrayBody__(a, b):
                 summ = coefficient
             else:
                 summ = summ + coefficient*np.array(wavelength)**i
-        return summ*np.array(wavelength)**-5*math.e**(a + b/np.array(wavelength))
+        return summ*np.array(wavelength)**-5.0*math.e**(a + b/np.array(wavelength))
     return GrayBody_model
 
 def E_planckian(wavelength, a, b):
@@ -225,7 +225,7 @@ def GrayBodyCoefficients(wavelength, irradiance, region, dof):
     ----------------------------------------------------------------------------
     Returns
         coefficients_GrayBody   - C coefficients in the gray body model
-        U                       - uncertainties in the C coefficients
+        U_coeff                 - uncertainties in the C coefficients
         a                       - coefficient in gray body model, related to gray body emissivity with e**a
         b                       - coefficient in gray body model, related to reciprocal of temperature distribution
     """
@@ -238,6 +238,7 @@ def GrayBodyCoefficients(wavelength, irradiance, region, dof):
     coefficients_GrayBody, coeff_covariance = curve_fit(__GrayBody__(a, b), wavelength[i_lowerBound:i_upperBound], irradiance[i_lowerBound:i_upperBound], p0=[0]*(dof+1), sigma=irradiance[i_lowerBound:i_upperBound])
     U_coeff = UncertaintyFromCovariance(coeff_covariance)
     return coefficients_GrayBody, U_coeff, a, b, U_ab
+
 
 def GrayBodyInterpolation(region, coefficients, a, b, step):
     """
@@ -355,3 +356,72 @@ def ApparentBBTemp(wavelengths, irradiances):
         temperature - apparent black body temperature. Units: K
     """
     return PeakWavelength(wavelengths, irradiances)/1e2/scipy.constants.physical_constants['Wien wavelength displacement law constant'][0]
+
+
+def GrayBodyCoefficientsEx(wavelength, irradiance, uncert_abs_k1, region, dof):
+    """
+    Performs curve-fitting on wavelength-irradiance data to generate coefficients and their uncertainties using the gray body model
+
+    ----------------------------------------------------------------------------
+    Notes
+        Authored by: Michael Braine, Physicist, NIST Gaithersburg
+        EMAIL: michael.braine@nist.gov
+        October 2022
+
+    ----------------------------------------------------------------------------
+    References
+        none
+
+    ----------------------------------------------------------------------------
+    Inputs
+        wavelength  - array of wavelengths. Expected units: nm
+        irradiance  - array irradiances. Expected units: W cm^-3 sr^-1
+        uncert_abs_k1 - array of absolute k=1 uncertainties in the irradiance data. Expected units: W cm^-3 sr^-1
+        region      - 1x2 array or tuple of start/stop wavelengths for the interpolation. syntax is [start, stop]. Expected units: nm
+        dof         - degrees of freedom for gray body coefficient fitting
+
+    ----------------------------------------------------------------------------
+    Returns
+        coefficients_GrayBody   - C coefficients in the gray body model
+        U_coeff                 - uncertainties in the C coefficients
+        a                       - coefficient in gray body model, related to gray body emissivity with e**a
+        b                       - coefficient in gray body model, related to reciprocal of temperature distribution
+        U_ab                    - uncertainties in the a and b coefficients
+    """
+    i_lowerBound, i_upperBound = WavelengthRegionIndex(wavelength, region)
+
+    ab, ab_covariance = curve_fit(E_planckian, wavelength[i_lowerBound:i_upperBound], irradiance[i_lowerBound:i_upperBound], p0=[50, -4800], sigma=uncert_abs_k1[i_lowerBound:i_upperBound], absolute_sigma=True)
+    a, b = ab[0], ab[1]
+    U_ab = UncertaintyFromCovariance(ab_covariance)
+
+    coefficients_GrayBody, coeff_covariance = curve_fit(__GrayBody__(a, b), wavelength[i_lowerBound:i_upperBound], irradiance[i_lowerBound:i_upperBound], p0=[0]*(dof+1), sigma=uncert_abs_k1[i_lowerBound:i_upperBound], absolute_sigma=True)
+    U_coeff = UncertaintyFromCovariance(coeff_covariance)
+    return coefficients_GrayBody, U_coeff, a, b, U_ab
+
+def GrayBodyInterpolationArb(wavelengths, coefficients, a, b):
+    """
+    Performs interpolation on wavelength-irradiance data to generate coefficients and their uncertainties using the gray body model
+
+    ----------------------------------------------------------------------------
+    Notes
+        Authored by: Michael Braine, Physicist, NIST Gaithersburg
+        EMAIL: michael.braine@nist.gov
+        October 2022
+
+    ----------------------------------------------------------------------------
+    References
+        none
+
+    ----------------------------------------------------------------------------
+    Inputs
+        wavelengths     - arbitrary array of wavelengths for interpolation. Expected units: nm
+        coefficients    - C coefficients in the gray body model
+        a               - coefficient in gray body model, related to gray body emissivity with e**a
+        b               - coefficient in gray body model, related to reciprocal of temperature distribution
+        
+    ----------------------------------------------------------------------------
+    Returns
+        wavelengths     - array of wavelengths used in interpolation. Units: nm
+        irradiances     - array of iraddiances from the interpolation. Units: W cm^-3 sr^-1
+    """
+    return wavelengths, __GrayBody__(a, b)(wavelengths, *coefficients)
